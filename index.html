@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Block Puzzle Deluxe</title>
+<style>
+    body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #5d4631;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        color: #fff;
+        user-select: none;
+        touch-action: manipulation;
+        padding: 10px;
+        box-sizing: border-box;
+    }
+    #menu, #settings, #game {
+        display: none;
+        text-align: center;
+        width: 100%;
+        max-width: 500px;
+    }
+    .modal {
+        background: #7b5b40;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 0 15px rgba(0,0,0,0.5);
+        box-sizing: border-box;
+    }
+    button {
+        padding: 10px 20px;
+        margin: 5px;
+        border: none;
+        border-radius: 8px;
+        background: #9b6d4a;
+        color: #fff;
+        font-size: 16px;
+        cursor: pointer;
+    }
+    button:disabled {
+        background: #444;
+        cursor: not-allowed;
+    }
+    #game-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+    #board {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        grid-template-rows: repeat(10, 1fr);
+        gap: 2px;
+        margin: 10px auto;
+        background: #4a3628;
+        padding: 5px;
+        border-radius: 10px;
+        touch-action: none;
+        width: 100%;
+        max-width: 320px;
+        aspect-ratio: 1 / 1;
+    }
+    .cell {
+        width: 100%;
+        height: 100%;
+        background: #eee;
+        border-radius: 5px;
+    }
+    .filled {
+        background: #ff9933;
+    }
+    #pieces-container {
+        width: 100%;
+        max-width: 320px;
+        margin-top: 15px;
+    }
+    #pieces {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .piece {
+        display: inline-grid;
+        grid-auto-flow: row;
+        cursor: grab;
+        touch-action: none;
+        margin: 5px;
+    }
+    .piece-cell {
+        width: 20px;
+        height: 20px;
+        background: #ffcc66;
+        border-radius: 5px;
+        margin: 1px;
+    }
+    
+    /* For mobile feedback */
+    .piece.dragging {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+    
+    /* Visual feedback for valid/invalid placement */
+    .cell.valid-drop {
+        background: rgba(0, 255, 0, 0.3);
+    }
+    .cell.invalid-drop {
+        background: rgba(255, 0, 0, 0.3);
+    }
+    
+    .game-info {
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+        max-width: 320px;
+        margin-bottom: 10px;
+    }
+    
+    @media (max-height: 700px) {
+        .piece-cell {
+            width: 18px;
+            height: 18px;
+        }
+        
+        #board {
+            max-width: 280px;
+        }
+        
+        #pieces-container {
+            max-width: 280px;
+        }
+        
+        .game-info {
+            max-width: 280px;
+        }
+    }
+    
+    @media (max-width: 350px) {
+        .piece-cell {
+            width: 16px;
+            height: 16px;
+        }
+        
+        #board {
+            max-width: 250px;
+        }
+        
+        #pieces-container {
+            max-width: 250px;
+        }
+        
+        .game-info {
+            max-width: 250px;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .modal {
+            padding: 10px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+    }
+</style>
+</head>
+<body>
+
+<!-- Main Menu -->
+<div id="menu" class="modal">
+    <h2>Block Puzzle Deluxe</h2>
+    <p>Drag blocks to the board. Complete lines to score points and unlock new levels!</p>
+    <button onclick="startGame()">Start Game</button>
+    <button onclick="openSettings()">⚙ Settings</button>
+</div>
+
+<!-- Settings -->
+<div id="settings" class="modal">
+    <h3>Settings</h3>
+    <label><input type="checkbox" id="musicToggle" checked> Background Music</label><br>
+    <label><input type="checkbox" id="soundToggle" checked> Sound Effects</label><br>
+    <label>Master Volume: <input type="range" id="volume" min="0" max="100" value="50"></label><br>
+    <button onclick="closeSettings()">Close</button>
+</div>
+
+<!-- Game -->
+<div id="game" class="modal">
+    <h3 id="levelTitle">Level 1</h3>
+    <div class="game-info">
+        <div>Score: <span id="score">0</span></div>
+        <div>Best: <span id="best">0</span></div>
+    </div>
+    <div id="game-container">
+        <div id="board"></div>
+        <div id="pieces-container">
+            <div id="pieces"></div>
+        </div>
+    </div>
+    <div>
+        <button onclick="resetGame()">Reset</button>
+        <button onclick="backToMenu()">Back to Menu</button>
+    </div>
+</div>
+
+<!-- Audio elements -->
+<audio id="bgMusic" loop>
+  <source src="https://www.bensound.com/bensound-music/bensound-funkyelement.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="soundEffect">
+  <source src="https://actions.google.com/sounds/v1/cartoon/pop.ogg" type="audio/ogg">
+</audio>
+
+<script>
+    const boardSize = 10;
+    let board = [];
+    let score = 0;
+    let best = localStorage.getItem("bestScore") || 0;
+    document.getElementById("best").textContent = best;
+
+    // Audio elements
+    const bgMusic = document.getElementById("bgMusic");
+    const soundEffect = document.getElementById("soundEffect");
+    
+    // Variables for touch handling
+    let activePiece = null;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let pieceStartX = 0;
+    let pieceStartY = 0;
+
+    const piecesShapes = [
+        [[1]], // single
+        [[1,1]], // line 2
+        [[1,1,1]], // line 3
+        [[1,1,1,1]], // line 4
+        [[1],[1]], // vertical 2
+        [[1],[1],[1]], // vertical 3
+        [[1,1],[1,1]], // square 2x2
+        [[1,0],[1,1]], // L shape
+        [[0,1],[1,1]], // reverse L
+        [[1,1,1],[0,1,0]], // T shape
+    ];
+
+    // Initialize audio settings
+    function initAudio() {
+        const musicToggle = document.getElementById("musicToggle");
+        const soundToggle = document.getElementById("soundToggle");
+        const volumeControl = document.getElementById("volume");
+        
+        // Set initial volume
+        updateVolume();
+        
+        // Music toggle event
+        musicToggle.addEventListener("change", function() {
+            if (this.checked) {
+                bgMusic.play().catch(e => console.log("Audio play failed:", e));
+            } else {
+                bgMusic.pause();
+            }
+        });
+        
+        // Volume control event
+        volumeControl.addEventListener("input", updateVolume);
+        
+        // Try to play music on first user interaction
+        document.body.addEventListener("click", function() {
+            if (musicToggle.checked && bgMusic.paused) {
+                bgMusic.play().catch(e => console.log("Audio play failed:", e));
+            }
+            // Remove this event after first interaction
+            document.body.removeEventListener("click", arguments.callee);
+        }, { once: true });
+    }
+    
+    // Update volume based on slider
+    function updateVolume() {
+        const volume = document.getElementById("volume").value / 100;
+        bgMusic.volume = volume * 0.7; // Background music a bit quieter
+        soundEffect.volume = volume;
+    }
+    
+    // Play sound effect
+    function playSoundEffect() {
+        if (document.getElementById("soundToggle").checked) {
+            soundEffect.currentTime = 0;
+            soundEffect.play().catch(e => console.log("Sound effect play failed:", e));
+        }
+    }
+
+    function createBoard() {
+        board = Array(boardSize).fill().map(()=>Array(boardSize).fill(0));
+        const container = document.getElementById("board");
+        container.innerHTML = "";
+        for (let r=0; r<boardSize; r++) {
+            for (let c=0; c<boardSize; c++) {
+                let div = document.createElement("div");
+                div.className = "cell";
+                div.dataset.row = r;
+                div.dataset.col = c;
+                container.appendChild(div);
+            }
+        }
+    }
+
+    function renderBoard() {
+        document.querySelectorAll(".cell").forEach(cell=>{
+            let r = cell.dataset.row;
+            let c = cell.dataset.col;
+            if (board[r][c] === 1) cell.classList.add("filled");
+            else cell.classList.remove("filled");
+        });
+    }
+
+    function spawnPieces() {
+        let piecesDiv = document.getElementById("pieces");
+        piecesDiv.innerHTML = "";
+        for (let i=0;i<3;i++) {
+            let shape = JSON.parse(JSON.stringify(piecesShapes[Math.floor(Math.random()*piecesShapes.length)]));
+            let pieceDiv = document.createElement("div");
+            pieceDiv.className = "piece";
+            pieceDiv.dataset.shape = JSON.stringify(shape);
+            pieceDiv.style.gridTemplateColumns = `repeat(${shape[0].length}, 1fr)`;
+            shape.forEach(row=>{
+                row.forEach(val=>{
+                    let cell = document.createElement("div");
+                    if (val===1) cell.className="piece-cell";
+                    pieceDiv.appendChild(cell);
+                });
+            });
+            
+            // Add both mouse and touch event listeners
+            pieceDiv.draggable = true;
+            pieceDiv.addEventListener("dragstart", dragStart);
+            
+            // Add touch event listeners
+            pieceDiv.addEventListener("touchstart", touchStart, {passive: false});
+            pieceDiv.addEventListener("touchmove", touchMove, {passive: false});
+            pieceDiv.addEventListener("touchend", touchEnd);
+            
+            piecesDiv.appendChild(pieceDiv);
+        }
+    }
+
+    // Mouse drag events
+    function dragStart(e) {
+        e.dataTransfer.setData("shape", e.target.dataset.shape);
+    }
+
+    document.getElementById("board").addEventListener("dragover", (e)=>e.preventDefault());
+    document.getElementById("board").addEventListener("drop", (e)=>{
+        let shape = JSON.parse(e.dataTransfer.getData("shape"));
+        let rect = e.target.getBoundingClientRect();
+        let col = Math.floor((e.clientX-rect.left)/(rect.width/boardSize));
+        let row = Math.floor((e.clientY-rect.top)/(rect.height/boardSize));
+        placePiece(shape,row,col);
+    });
+
+    // Touch events for mobile
+    function touchStart(e) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        activePiece = e.currentTarget;
+        activePiece.classList.add("dragging");
+        
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        
+        const rect = activePiece.getBoundingClientRect();
+        pieceStartX = rect.left;
+        pieceStartY = rect.top;
+        
+        // Create a ghost image for dragging feedback
+        activePiece.style.position = 'absolute';
+        activePiece.style.zIndex = '1000';
+        activePiece.style.left = `${pieceStartX}px`;
+        activePiece.style.top = `${pieceStartY}px`;
+    }
+
+    function touchMove(e) {
+        if (!activePiece) return;
+        e.preventDefault();
+        
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - touchStartX;
+        const deltaY = touch.clientY - touchStartY;
+        
+        // Move the piece
+        activePiece.style.left = `${pieceStartX + deltaX}px`;
+        activePiece.style.top = `${pieceStartY + deltaY}px`;
+        
+        // Show drop preview on board
+        const boardRect = document.getElementById("board").getBoundingClientRect();
+        const col = Math.floor((touch.clientX - boardRect.left) / (boardRect.width/boardSize));
+        const row = Math.floor((touch.clientY - boardRect.top) / (boardRect.height/boardSize));
+        
+        const shape = JSON.parse(activePiece.dataset.shape);
+        
+        // Clear previous preview
+        document.querySelectorAll('.cell.valid-drop, .cell.invalid-drop').forEach(cell => {
+            cell.classList.remove('valid-drop', 'invalid-drop');
+        });
+        
+        // Show new preview
+        if (row >= 0 && col >= 0) {
+            const isValid = canPlace(shape, row, col);
+            
+            shape.forEach((r, i) => {
+                r.forEach((val, j) => {
+                    if (val === 1 && row + i < boardSize && col + j < boardSize) {
+                        const cell = document.querySelector(`.cell[data-row="${row+i}"][data-col="${col+j}"]`);
+                        if (cell) {
+                            cell.classList.add(isValid ? 'valid-drop' : 'invalid-drop');
+                        }
+                    }
+                });
+            });
+        }
+    }
+
+    function touchEnd(e) {
+        if (!activePiece) return;
+        
+        // Remove preview classes
+        document.querySelectorAll('.cell.valid-drop, .cell.invalid-drop').forEach(cell => {
+            cell.classList.remove('valid-drop', 'invalid-drop');
+        });
+        
+        const touch = e.changedTouches[0];
+        const boardRect = document.getElementById("board").getBoundingClientRect();
+        
+        // Check if the touch ended over the board
+        if (touch.clientX >= boardRect.left && touch.clientX <= boardRect.right &&
+            touch.clientY >= boardRect.top && touch.clientY <= boardRect.bottom) {
+            
+            const col = Math.floor((touch.clientX - boardRect.left) / (boardRect.width/boardSize));
+            const row = Math.floor((touch.clientY - boardRect.top) / (boardRect.height/boardSize));
+            const shape = JSON.parse(activePiece.dataset.shape);
+            
+            placePiece(shape, row, col);
+        }
+        
+        // Reset piece style and position
+        activePiece.classList.remove("dragging");
+        activePiece.style.position = '';
+        activePiece.style.zIndex = '';
+        activePiece.style.left = '';
+        activePiece.style.top = '';
+        activePiece = null;
+    }
+
+    function placePiece(shape,row,col) {
+        if (!canPlace(shape,row,col)) return;
+        shape.forEach((r,i)=>{
+            r.forEach((val,j)=>{
+                if (val===1) board[row+i][col+j]=1;
+            });
+        });
+        
+        // Play sound effect when placing a piece
+        playSoundEffect();
+        
+        score += shape.flat().filter(x=>x===1).length*10;
+        document.getElementById("score").textContent = score;
+        clearLines();
+        renderBoard();
+        spawnPieces();
+        localStorage.setItem("bestScore", Math.max(score,best));
+        document.getElementById("best").textContent = localStorage.getItem("bestScore");
+    }
+
+    function canPlace(shape,row,col) {
+        if (row < 0 || col < 0 || row+shape.length>boardSize || col+shape[0].length>boardSize) return false;
+        for (let i=0;i<shape.length;i++){
+            for (let j=0;j<shape[i].length;j++){
+                if (shape[i][j]===1 && board[row+i][col+j]===1) return false;
+            }
+        }
+        return true;
+    }
+
+    function clearLines() {
+        let fullRows = [];
+        let fullCols = [];
+        for (let r=0;r<boardSize;r++) {
+            if (board[r].every(val=>val===1)) fullRows.push(r);
+        }
+        for (let c=0;c<boardSize;c++) {
+            if (board.every(row=>row[c]===1)) fullCols.push(c);
+        }
+        fullRows.forEach(r=> board[r].fill(0));
+        fullCols.forEach(c=> board.forEach(row=>row[c]=0));
+        if (fullRows.length+fullCols.length>0){
+            score += (fullRows.length+fullCols.length)*100;
+            document.getElementById("score").textContent = score;
+            
+            // Play sound effect when clearing lines
+            playSoundEffect();
+        }
+    }
+
+    function startGame(){
+        document.getElementById("menu").style.display="none";
+        document.getElementById("settings").style.display="none";
+        document.getElementById("game").style.display="block";
+        score=0;
+        document.getElementById("score").textContent=score;
+        createBoard();
+        renderBoard();
+        spawnPieces();
+        
+        // Start background music if enabled
+        if (document.getElementById("musicToggle").checked) {
+            bgMusic.play().catch(e => console.log("Audio play failed:", e));
+        }
+    }
+    
+    function resetGame(){ 
+        startGame(); 
+    }
+    
+    function backToMenu(){
+        document.getElementById("game").style.display="none";
+        document.getElementById("menu").style.display="block";
+        
+        // Pause background music when returning to menu
+        bgMusic.pause();
+    }
+    
+    function openSettings(){
+        document.getElementById("menu").style.display="none";
+        document.getElementById("settings").style.display="block";
+    }
+    
+    function closeSettings(){
+        document.getElementById("settings").style.display="none";
+        document.getElementById("menu").style.display="block";
+    }
+
+    // Initialize the game when page loads
+    window.onload = function() {
+        document.getElementById("menu").style.display="block";
+        initAudio();
+    };
+</script>
+</body>
+</html>
